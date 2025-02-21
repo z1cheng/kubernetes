@@ -41,6 +41,7 @@ import (
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	rand2 "k8s.io/apimachinery/pkg/util/rand"
 	"k8s.io/apimachinery/pkg/util/uuid"
 	"k8s.io/apiserver/pkg/features"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
@@ -501,6 +502,94 @@ func TestDeferredResponseWriter_Write(t *testing.T) {
 					t.Errorf("payload mismatch, expected: %s, got: %s", fullPayload, resBytes)
 				}
 			}
+		})
+	}
+}
+
+func benchmarkChunkingGzip(b *testing.B, count int, size int) {
+	mockResponseWriter := httptest.NewRecorder()
+
+	drw := &deferredResponseWriter{
+		mediaType:       "text/plain",
+		statusCode:      200,
+		contentEncoding: "gzip",
+		hw:              mockResponseWriter,
+		ctx:             context.Background(),
+	}
+	for i := 0; i < count; i++ {
+		chunk := []byte(rand2.String(size))
+		n, err := drw.Write(chunk)
+		if err != nil {
+			b.Fatalf("unexpected error while writing chunk: %v", err)
+		}
+		if n != len(chunk) {
+			b.Errorf("write is not complete, expected: %d bytes, written: %d bytes", len(chunk), n)
+		}
+	}
+	err := drw.Close()
+	if err != nil {
+		b.Fatalf("unexpected error when closing deferredResponseWriter: %v", err)
+	}
+	res := mockResponseWriter.Result()
+	if res.StatusCode != http.StatusOK {
+		b.Fatalf("status code is not writtend properly, expected: 200, got: %d", res.StatusCode)
+	}
+}
+
+func BenchmarkChunkingGzip(b *testing.B) {
+	tests := []struct {
+		count int
+		size  int
+	}{
+		{
+			count: 100,
+			size:  1_000,
+		},
+		{
+			count: 100,
+			size:  100_000,
+		},
+		{
+			count: 1_000,
+			size:  100_000,
+		},
+		{
+			count: 1_000,
+			size:  1_000_000,
+		},
+		{
+			count: 10_000,
+			size:  100_000,
+		},
+		{
+			count: 100_000,
+			size:  10_000,
+		},
+		{
+			count: 1,
+			size:  100_000,
+		},
+		{
+			count: 1,
+			size:  1_000_000,
+		},
+		{
+			count: 1,
+			size:  10_000_000,
+		},
+		{
+			count: 1,
+			size:  100_000_000,
+		},
+		{
+			count: 1,
+			size:  1_000_000_000,
+		},
+	}
+
+	for _, t := range tests {
+		b.Run(fmt.Sprintf("Count=%d/Size=%d", t.count, t.size), func(b *testing.B) {
+			benchmarkChunkingGzip(b, t.count, t.size)
 		})
 	}
 }
