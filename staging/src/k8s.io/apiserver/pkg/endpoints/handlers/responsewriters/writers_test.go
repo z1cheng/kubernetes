@@ -506,7 +506,7 @@ func TestDeferredResponseWriter_Write(t *testing.T) {
 	}
 }
 
-func benchmarkChunkingGzip(b *testing.B, count int, size int) {
+func benchmarkChunkingGzip(b *testing.B, count int, chunk []byte) {
 	mockResponseWriter := httptest.NewRecorder()
 
 	drw := &deferredResponseWriter{
@@ -516,8 +516,8 @@ func benchmarkChunkingGzip(b *testing.B, count int, size int) {
 		hw:              mockResponseWriter,
 		ctx:             context.Background(),
 	}
+	b.ResetTimer()
 	for i := 0; i < count; i++ {
-		chunk := []byte(rand2.String(size))
 		n, err := drw.Write(chunk)
 		if err != nil {
 			b.Fatalf("unexpected error while writing chunk: %v", err)
@@ -589,7 +589,8 @@ func BenchmarkChunkingGzip(b *testing.B) {
 
 	for _, t := range tests {
 		b.Run(fmt.Sprintf("Count=%d/Size=%d", t.count, t.size), func(b *testing.B) {
-			benchmarkChunkingGzip(b, t.count, t.size)
+			chunk := []byte(rand2.String(t.size))
+			benchmarkChunkingGzip(b, t.count, chunk)
 		})
 	}
 }
